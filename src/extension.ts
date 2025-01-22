@@ -30,8 +30,6 @@ export function activate(context: vscode.ExtensionContext) {
 
                 // Check if the node is in a `.d.ts` file
                 if (targetFile.fileName.endsWith('.d.ts')) {
-                    console.log(`Intercepting navigation in .d.ts file: ${document.fileName}`);
-
                     // Parse the comment above the node
                     const comment = getLeadingCommentAboveNode(targetDeclaration, targetFile);
                     if (comment) {
@@ -39,8 +37,7 @@ export function activate(context: vscode.ExtensionContext) {
 						if (match) {
 							const line = parseInt(match[1], 10) - 1; // Convert to 0-based index
 							const path = match[2].trim(); // Ensure no extra spaces in the path
-							console.log(`Found @line and @path: ${line}, ${path}`);
-						
+
 							// Ensure the file exists before attempting navigation
 							const fileUri = vscode.Uri.file(path);
 							try {
@@ -61,7 +58,6 @@ export function activate(context: vscode.ExtensionContext) {
                 }
 
                 // Fallback to the default behavior
-                console.log('Falling back to default Go to Definition behavior.');
                 return null; // This allows VS Code to use its default provider
             },
         }
@@ -79,9 +75,6 @@ function findNodeAtOffset(sourceFile: ts.SourceFile, offset: number): ts.Node | 
             ts.forEachChild(node, visit);
         }
     };
-
-	console.log('sourceFile', sourceFile);
-	console.log('matchingNode', matchingNode);
 
     ts.forEachChild(sourceFile, visit);
     return matchingNode;
