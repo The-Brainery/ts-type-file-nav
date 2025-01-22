@@ -1,6 +1,6 @@
 export class db {
     constructor(){
-        console.log("MainClass constructor")
+        console.log("MainClass constructor");
     }
     user?: {
         name: string;

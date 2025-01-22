@@ -1,5 +1,5 @@
 import { db } from './types/types';
 
-const mydb: db = {}
+const mydb: db = {};
 
 mydb.user = {name:'John Doe', age: 32};
