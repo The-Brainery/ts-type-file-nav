@@ -1,139 +1,73 @@
 import * as vscode from 'vscode';
-import pathResolver from 'path';
 import ts from 'typescript';
-import glob from 'glob';
 
 
 export function activate(context: vscode.ExtensionContext) {
+    const definitionProvider = vscode.languages.registerDefinitionProvider(
+        { language: 'typescript', scheme: 'file' },
+        {
+            provideDefinition: async (document, position, token) => {
+                const program = await createTypeScriptProgram(document.fileName);
+                const sourceFile = program.getSourceFile(document.fileName);
+                const offset = document.offsetAt(position);
+				const checker = program.getTypeChecker();
 
-	let lastCMDEvent = Infinity;
+                if (!sourceFile) return null;
 
-	// const keyPressCommand = vscode.commands.registerCommand('extension.keyPress', () => {
-	// 	lastCMDEvent = Date.now();
-	// });
-	
-	// context.subscriptions.push(keyPressCommand);
-	
-	const clickListener = vscode.window.onDidChangeTextEditorSelection(async (event) => {
-		if (Date.now() - lastCMDEvent > 1000) {
-			return;
-		}
-		const editor = event.textEditor;
-		const position = editor.selection.active;
+                // Find the node at the clicked position
+                const node = findNodeAtOffset(sourceFile, offset);
+                if (!node) return null;
 
-		const program = createTypeScriptProgram(editor.document.fileName);
-		const sourceFiles = program.getSourceFiles();
-		const sourceFile = program.getSourceFile(editor.document.fileName);
-		const offset = editor.document.offsetAt(position);
-		const checker = program.getTypeChecker();
+				const symbol = checker.getSymbolAtLocation(node);
+                if (!symbol) return null;
 
-		let typeDefinitionLocations;
+				const declarations = symbol.getDeclarations();
+                if (!declarations || declarations.length === 0) return null
 
-		const node = sourceFile ? findNodeAtOffset(sourceFile, offset) : undefined;
-		const type = node ? checker.getTypeAtLocation(node) : undefined;
-		const definitionLocation = node ? getDefinitionLocation(node, checker) : undefined;
+				const targetDeclaration = declarations[0];
+                const targetFile = targetDeclaration.getSourceFile();
 
-		
-		// Check if the click happened near a word or inside a tooltip region
-		const wordRange = editor.document.getWordRangeAtPosition(position);
-		if (wordRange) {
-			const word = editor.document.getText(wordRange);
-			
-			const isPatternMatch = (line: string): boolean => {
-				const pattern = /\/\*\* @line \d+ @column \d+ @path .+\*\//;
-				return pattern.test(line);
-			}
-			
-			const currentIndentationLevel = getIndentationLevel(editor.document.lineAt(position.line).text);
-			
-			let lineNumberAbove = position.line - 1;
-			let foundPattern = false;
-			let matchedLine = '';
-			let line = 0, column = 0, path = '';
-			
-			while (lineNumberAbove >= 0) {
-				const lineText = editor.document.lineAt(lineNumberAbove).text;
-				
-				const previousIndentationLevel = getIndentationLevel(lineText);
-				
-				// If indentation level is less, break out of the loop (stop checking higher lines)
-				if (previousIndentationLevel > currentIndentationLevel) {
-					break;
-				}
-				
-				// If the line matches the pattern, we're done
-				if (isPatternMatch(lineText)) {
-					const match = lineText.match(/\/\*\* @line (\d+) @column (\d+) @path (.+) \*\//);
-					
-					// Extract line, column, and path from the comment
-					if (match) {
-						line = parseInt(match[1], 10) - 1;  // Convert to 0-based index
-						column = parseInt(match[2], 10) - 1; // Convert to 0-based index
-						path = match[3];
-						foundPattern = true;
-						matchedLine = lineText;
-						break;
-					}
-				}
-				
-				
-				// Move to the next line above
-				lineNumberAbove--;
-			}
-			
-			if (foundPattern) {
-				console.log(`Found definition for clicked word: ${word}`);
-				
-				const fileUri = vscode.Uri.file(pathResolver.resolve(editor.document.fileName, '..', path))
-				
-				vscode.workspace.openTextDocument(fileUri).then((document) => {
-					vscode.window.showTextDocument(document).then((editor) => {
-						// Move the cursor to the specific line and column
-						const targetPosition = new vscode.Position(line, column);
-						editor.selection = new vscode.Selection(targetPosition, targetPosition);
-						editor.revealRange(new vscode.Range(targetPosition, targetPosition));
-					})
-				}, (error) => {
-					vscode.window.showErrorMessage(`Failed to open file at ${path}`);
-				})
-				
-				
-				vscode.window.showInformationMessage(`Opening file at ${path}, line: ${line + 1}, column: ${column + 1}`);
-			}
-		}
-	});
-	
-	context.subscriptions.push(clickListener);
-}
 
-function getIndentationLevel(line: string): number {
-	const match = line.match(/^\s*/); // Match leading spaces/tabs
-	return match ? match[0].length : 0; // Return the length of leading spaces/tabs
-}
+                // Check if the node is in a `.d.ts` file
+                if (targetFile.fileName.endsWith('.d.ts')) {
+                    console.log(`Intercepting navigation in .d.ts file: ${document.fileName}`);
 
-function getDefinitionLocation(
-    node: ts.Node,
-    checker: ts.TypeChecker
-): { fileName: string; line: number; character: number } | undefined {
-    const symbol = checker.getSymbolAtLocation(node);
+                    // Parse the comment above the node
+                    const comment = getLeadingCommentAboveNode(targetDeclaration, targetFile);
+                    if (comment) {
+                        const match = comment.match(/@line (\d+) @path (.+)/);
+						if (match) {
+							const line = parseInt(match[1], 10) - 1; // Convert to 0-based index
+							const path = match[2].trim(); // Ensure no extra spaces in the path
+							console.log(`Found @line and @path: ${line}, ${path}`);
+						
+							// Ensure the file exists before attempting navigation
+							const fileUri = vscode.Uri.file(path);
+							try {
+								const document = await vscode.workspace.openTextDocument(fileUri);
+								await vscode.window.showTextDocument(document, { preview: true });
+								const position = new vscode.Position(line, 0);
+								const editor = vscode.window.activeTextEditor;
+								if (editor) {
+									editor.selection = new vscode.Selection(position, position);
+									editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
+								}
+							} catch (error) {
+								vscode.window.showErrorMessage(`Failed to open file: ${path}`);
+								console.error(error);
+							}
+						}
+                    }
+                }
 
-    if (symbol) {
-		const declarations = symbol.getDeclarations() || [];
+                // Fallback to the default behavior
+                console.log('Falling back to default Go to Definition behavior.');
+                return null; // This allows VS Code to use its default provider
+            },
+        }
+    );
 
-		for (let declaration of declarations) {
-			const sourceFile = declaration.getSourceFile();
-			const { line, character } = sourceFile.getLineAndCharacterOfPosition(declaration.getStart());
-
-			return {
-                fileName: sourceFile.fileName,
-                line: line + 1, // Convert to 1-based line index
-                character: character + 1, // Convert to 1-based character index
-            };
-
-		}
-    }
-
-    return undefined;
+    context.subscriptions.push(definitionProvider);
 }
 
 function findNodeAtOffset(sourceFile: ts.SourceFile, offset: number): ts.Node | undefined {
@@ -146,43 +80,34 @@ function findNodeAtOffset(sourceFile: ts.SourceFile, offset: number): ts.Node | 
         }
     };
 
+	console.log('sourceFile', sourceFile);
+	console.log('matchingNode', matchingNode);
+
     ts.forEachChild(sourceFile, visit);
     return matchingNode;
 }
 
-function getFiles(pattern: string) {
-	return new Promise((resolve, reject) => {
-	  //@ts-ignore
-	  glob(pattern, (err, files) => {
-		if (err) {
-		  reject(err);
-		} else {
-		  resolve(files);
-		}
-	  });
-	});
+function getLeadingCommentAboveNode(node: ts.Node, sourceFile: ts.SourceFile): string | null {
+    const fullText = sourceFile.getFullText();
+    const commentRanges = ts.getLeadingCommentRanges(fullText, node.getFullStart());
+
+    if (!commentRanges || commentRanges.length === 0) return null
+
+    // Find the comment immediately preceding the node
+    const lastCommentRange = commentRanges[commentRanges.length - 1];
+    const commentText = fullText.slice(lastCommentRange.pos, lastCommentRange.end).trim();
+    return commentText;
 }
 
 async function createTypeScriptProgram(filePath: string): Promise<ts.Program> {
-	const options: ts.CompilerOptions = {
-		allowJs: true, // For JavaScript support
-		checkJs: true,
-		target: ts.ScriptTarget.ESNext,
-		module: ts.ModuleKind.CommonJS
-	};
+    const options: ts.CompilerOptions = {
+        allowJs: true,
+        checkJs: true,
+        target: ts.ScriptTarget.ESNext,
+        module: ts.ModuleKind.CommonJS,
+    };
 
-	const filePaths = vscode.workspace.workspaceFolders?.map( (f) => f.uri.path) || []
-	let allPaths = [];
-
-	for (let filePath of filePaths) {
-		allPaths.push(pathResolver.resolve(filePath, '**', '*.ts'));
-		allPaths.push(pathResolver.resolve(filePath, '**', '*.d.ts'));
-		allPaths.push(pathResolver.resolve(filePath, '*.ts'));
-		allPaths.push(pathResolver.resolve(filePath, '*.d.ts'));
-	}
-	return ts.createProgram(await getFiles(`${filePaths[0]}/**/*.ts${filePaths[0]}/**/*.d.ts,`), options);
+    return ts.createProgram([filePath], options);
 }
-
-
 
 export function deactivate() {}

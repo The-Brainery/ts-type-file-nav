@@ -32,6 +32,10 @@
       {
         "command": "typescript-file-navigation.helloWorld",
         "title": "Hello World"
+      },
+      {
+        "command": "extension.goToImplementation",
+        "title": "Go to Implementation"
       }
     ]
   },
