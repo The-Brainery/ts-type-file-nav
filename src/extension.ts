@@ -64,10 +64,10 @@ export function activate(context: vscode.ExtensionContext) {
                 // Parse the comment above the node
                 const comment = getLeadingCommentAboveNode(targetDeclaration, targetFile);
                 if (comment) {
-                    const match = comment.match(/@line (\d+) @path (.+)/);
+                    const match = comment.match(/File:\/\/(.+):(\d+)/);
                     if (match) {
-                        targetFileLine = parseInt(match[1], 10) - 1; // Convert to 0-based index
-                        targetFilePath = path.resolve(targetFile.fileName, '..', match[2].trim()) // Ensure no extra spaces in the path
+                        targetFileLine = parseInt(match[2], 10) - 1; // Convert to 0-based index
+                        targetFilePath = path.resolve(targetFile.fileName, '..', match[1].trim()) // Ensure no extra spaces in the path
                         return new vscode.Hover(targetFilePath);
                     }
                 }

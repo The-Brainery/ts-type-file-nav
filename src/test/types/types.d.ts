@@ -1,5 +1,5 @@
 interface db {
-  // @line 5 @path ../original/model.ts
+  // File://../original/model.ts:2
 	user?: Partial<Model>;
 	[key: string]: any;
 }
