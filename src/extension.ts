@@ -68,7 +68,8 @@ export function activate(context: vscode.ExtensionContext) {
                     if (match) {
                         targetFileLine = parseInt(match[2], 10) - 1; // Convert to 0-based index
                         targetFilePath = path.resolve(targetFile.fileName, '..', match[1].trim()) // Ensure no extra spaces in the path
-                        return new vscode.Hover(targetFilePath);
+                        // return new vscode.Hover(targetFilePath);
+                        return null;
                     }
                 }
             }
