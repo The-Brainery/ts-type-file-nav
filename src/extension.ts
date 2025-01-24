@@ -5,85 +5,71 @@ import path from 'path';
 export function activate(context: vscode.ExtensionContext) {
     let targetFilePath = null as string | null;
     let targetFileLine = null as number | null;
-    let isCmdOrCtrlPressed = false;
 
-    const clickHandler = async (e: any) => {
-        if (!targetFilePath) {return;}
-
-        // Ensure the file exists before attempting navigation
-        const fileUri = vscode.Uri.file(targetFilePath);
-
-        const document = await vscode.workspace.openTextDocument(fileUri);
-        await vscode.window.showTextDocument(document, { preview: true });
-        const position = new vscode.Position(targetFileLine ?? 0, 0);
-        const editor = vscode.window.activeTextEditor;
-
-        try {
-            if (editor) {
-                editor.selection = new vscode.Selection(position, position);
-                editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
-            }
-        } catch (error) {
-            vscode.window.showErrorMessage(`Failed to open file: ${path}`);
-            console.error(error);
-        }
-    }
-
-    const clickListener = vscode.window.onDidChangeTextEditorSelection(clickHandler);    
-    const hoverProvider = vscode.languages.registerHoverProvider(
-        { scheme: 'file', language: 'typescript' }, // Target TypeScript files
+    const definitionProvider = vscode.languages.registerDefinitionProvider(
+        { language: 'typescript', scheme: 'file' },
         {
-          async provideHover(document, position, token) {
-            targetFilePath = null;
-            targetFileLine = null;
-            const program = await createTypeScriptProgram(document.fileName);
-            const sourceFile = program.getSourceFile(document.fileName);
+            provideDefinition: async (document, position, token) => {
+                const program = await createTypeScriptProgram(document.fileName);
+                const sourceFile = program.getSourceFile(document.fileName);
+                const offset = document.offsetAt(position);
+				const checker = program.getTypeChecker();
 
-            // IF source file is not .ts or .js, return null
-            if (!sourceFile || !document.fileName.endsWith('.ts') 
-                && !document.fileName.endsWith('.js') 
-                && !document.fileName.endsWith('.tsx') 
-                && !document.fileName.endsWith('.jsx')) {
-                return null;
-            }
-            const offset = document.offsetAt(position);
-            const checker = program.getTypeChecker();
+                if (!sourceFile || !document.fileName.endsWith('.ts') 
+                    && !document.fileName.endsWith('.js') 
+                    && !document.fileName.endsWith('.tsx') 
+                    && !document.fileName.endsWith('.jsx')) {
+                    return null;
+                }
 
-            // Find the node at the clicked position
-            const node = findNodeAtOffset(sourceFile, offset);
-            if (!node) {return null;}
+                // Find the node at the clicked position
+                const node = findNodeAtOffset(sourceFile, offset);
+                if (!node) return null;
 
-            const symbol = checker.getSymbolAtLocation(node);
-            if (!symbol) {return null;}
+				const symbol = checker.getSymbolAtLocation(node);
+                if (!symbol) return null;
 
-            const declarations = symbol.getDeclarations();
-            if (!declarations || declarations.length === 0) {
-                return null;
-            }
+				const declarations = symbol.getDeclarations();
+                if (!declarations || declarations.length === 0) return null
 
-            const targetDeclaration = declarations[0];
-            const targetFile = targetDeclaration.getSourceFile();
+				const targetDeclaration = declarations[0];
+                const targetFile = targetDeclaration.getSourceFile();
 
-            // Check if the node is in a `.d.ts` file
-            if (targetFile.fileName.endsWith('.d.ts')) {
-                // Parse the comment above the node
-                const comment = getLeadingCommentAboveNode(targetDeclaration, targetFile);
-                if (comment) {
-                    const match = comment.match(/File:\/\/(.+):(\d+)/);
+
+                // Check if the node is in a `.d.ts` file
+                if (targetFile.fileName.endsWith('.d.ts')) {
+                    // Parse the comment above the node
+                    const comment = getLeadingCommentAboveNode(targetDeclaration, targetFile);
+                    if (comment) {
+                        const match = comment.match(/File:\/\/(.+):(\d+)/);
                     if (match) {
                         targetFileLine = parseInt(match[2], 10) - 1; // Convert to 0-based index
                         targetFilePath = path.resolve(targetFile.fileName, '..', match[1].trim()) // Ensure no extra spaces in the path
-                        // return new vscode.Hover(targetFilePath); // NOTE: Hover has a bug where it opens the file immediately after clicking even without cmd/ctrl
-                        return null;
+							// Ensure the file exists before attempting navigation
+							const fileUri = vscode.Uri.file(targetFilePath);
+							try {
+								const document = await vscode.workspace.openTextDocument(fileUri);
+								await vscode.window.showTextDocument(document, { preview: true });
+								const position = new vscode.Position(targetFileLine, 0);
+								const editor = vscode.window.activeTextEditor;
+								if (editor) {
+									editor.selection = new vscode.Selection(position, position);
+									editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
+								}
+							} catch (error) {
+								vscode.window.showErrorMessage(`Failed to open file: ${path}`);
+								console.error(error);
+							}
+						}
                     }
                 }
-            }
-            return null;
-          },
+
+                // Fallback to the default behavior
+                return null; // This allows VS Code to use its default provider
+            },
         }
     );
-    context.subscriptions.push(clickListener);
-    context.subscriptions.push(hoverProvider);
+    context.subscriptions.push(definitionProvider);
 }
 
 function findNodeAtOffset(sourceFile: ts.SourceFile, offset: number): ts.Node | undefined {
