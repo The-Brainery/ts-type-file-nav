@@ -3,22 +3,22 @@ import ts from 'typescript';
 import path from 'path';
 
 export function activate(context: vscode.ExtensionContext) {
-    let hasHovered = false;
     let targetFilePath = null as string | null;
     let targetFileLine = null as number | null;
+    let isCmdOrCtrlPressed = false;
 
     const clickHandler = async (e: any) => {
-        if (!hasHovered) {return;}
         if (!targetFilePath) {return;}
-        hasHovered = false;
 
         // Ensure the file exists before attempting navigation
         const fileUri = vscode.Uri.file(targetFilePath);
+
+        const document = await vscode.workspace.openTextDocument(fileUri);
+        await vscode.window.showTextDocument(document, { preview: true });
+        const position = new vscode.Position(targetFileLine ?? 0, 0);
+        const editor = vscode.window.activeTextEditor;
+
         try {
-            const document = await vscode.workspace.openTextDocument(fileUri);
-            await vscode.window.showTextDocument(document, { preview: true });
-            const position = new vscode.Position(targetFileLine ?? 0, 0);
-            const editor = vscode.window.activeTextEditor;
             if (editor) {
                 editor.selection = new vscode.Selection(position, position);
                 editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
@@ -34,15 +34,20 @@ export function activate(context: vscode.ExtensionContext) {
         { scheme: 'file', language: 'typescript' }, // Target TypeScript files
         {
           async provideHover(document, position, token) {
-            hasHovered = true;
             targetFilePath = null;
             targetFileLine = null;
             const program = await createTypeScriptProgram(document.fileName);
             const sourceFile = program.getSourceFile(document.fileName);
+
+            // IF source file is not .ts or .js, return null
+            if (!sourceFile || !document.fileName.endsWith('.ts') 
+                && !document.fileName.endsWith('.js') 
+                && !document.fileName.endsWith('.tsx') 
+                && !document.fileName.endsWith('.jsx')) {
+                return null;
+            }
             const offset = document.offsetAt(position);
             const checker = program.getTypeChecker();
-            if (!hasHovered) {return null;}
-            if (!sourceFile) {return null;}
 
             // Find the node at the clicked position
             const node = findNodeAtOffset(sourceFile, offset);
@@ -68,7 +73,7 @@ export function activate(context: vscode.ExtensionContext) {
                     if (match) {
                         targetFileLine = parseInt(match[2], 10) - 1; // Convert to 0-based index
                         targetFilePath = path.resolve(targetFile.fileName, '..', match[1].trim()) // Ensure no extra spaces in the path
-                        // return new vscode.Hover(targetFilePath);
+                        // return new vscode.Hover(targetFilePath); // NOTE: Hover has a bug where it opens the file immediately after clicking even without cmd/ctrl
                         return null;
                     }
                 }
