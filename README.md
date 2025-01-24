@@ -9,4 +9,21 @@ This is the README for your extension "typescript-file-navigation". After writin
     // File://../original/file.ts:<LINE_NUMBER>
 ```
 
-2. Now when you click on the property holding cmd+d, it will navigate to the file
+ex.
+
+```ts
+interface db {
+    // File://../original/db.ts:5
+	user?: Partial<Model>;
+	[key: string]: any;
+}
+
+interface Model {
+  [key: string]: any;
+}
+
+export { db, Model };
+
+```
+
+2. Now when you CMD + Click it will navigate to the source file / line number
