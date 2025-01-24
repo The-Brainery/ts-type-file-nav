@@ -4,7 +4,7 @@ This is the README for your extension "typescript-file-navigation". After writin
 
 ## How to use
 
-1. In your type definition add a comment like so
+1. In your type definition add a comment like so above the attribute / type that you want to redirect.
 ```ts
     // File://../original/file.ts:<LINE_NUMBER>
 ```
