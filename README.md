@@ -1,6 +1,6 @@
 # typescript-file-navigation README
 
-This is the README for your extension "typescript-file-navigation". After writing up a brief description, we recommend including the following sections.
+Navigate to source files vs. to the definition file with CMD+Click
 
 ## How to use
 
