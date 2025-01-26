@@ -1,7 +1,12 @@
 {
   "name": "typescript-file-navigation",
-  "displayName": "typescript-file-navigation",
+  "displayName": "Custom Navigation for Types",
   "description": "Have custom paths for navigation in your typescript type files",
+  "publisher": "TheBrainery",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/The-Brainery/ts-type-file-nav"},
+  "license": "MIT",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.96.0"
@@ -56,7 +61,7 @@
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
     "eslint": "^9.16.0",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.3"
   },
   "dependencies": {
     "glob": "^11.0.1"
