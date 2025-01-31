@@ -6,10 +6,40 @@ export function activate(context: vscode.ExtensionContext) {
     let targetFilePath = null as string | null;
     let targetFileLine = null as number | null;
     let definitionActive = false;
+    let program = null as ts.Program | null;
+    let sourceFile = undefined as ts.SourceFile | undefined;
+    let checker = null as ts.TypeChecker | null;
+    let _initialized = false;
+    let currentFile = null as string | null;
+
+    const setupTypescript = async (fileName: string) => {
+        if (currentFile === fileName) { return; }
+        currentFile = fileName;
+        program = await createTypeScriptProgram(fileName);
+        sourceFile = program.getSourceFile(fileName);
+        checker = program.getTypeChecker();
+    }
+
+    vscode.workspace.onDidOpenTextDocument((document) => {
+        if (_initialized) { return; }
+        _initialized = true;
+        setupTypescript(document.uri.fsPath);
+        context.subscriptions.push(definitionProvider);
+        const clickListener = vscode.window.onDidChangeTextEditorSelection(clickHandler);
+        context.subscriptions.push(clickListener);
+        console.log(`Opened file: ${document.uri.fsPath}`);
+    });
+
+    vscode.window.onDidChangeActiveTextEditor(async (editor) => {
+        if (!editor) { return; }
+        setupTypescript(editor.document.uri.fsPath);
+    });
+
 
     const clickHandler = async (e: any) => {
         if (!definitionActive) { return; }
         if (!targetFilePath) {return;}
+        if (!(program && sourceFile && checker)) {return;}
 
         definitionActive = false;
         // Ensure the file exists before attempting navigation
@@ -33,6 +63,8 @@ export function activate(context: vscode.ExtensionContext) {
         { language: 'typescript', scheme: 'file' },
         {
             provideDefinition: async (document, position, token) => {
+                if (!(program && sourceFile && checker)) {return;}
+
                 definitionActive = true;
                 setTimeout(() => {
                     definitionActive = false;
@@ -40,19 +72,16 @@ export function activate(context: vscode.ExtensionContext) {
 
                 targetFilePath = null;
                 targetFileLine = null;
-                const program = await createTypeScriptProgram(document.fileName);
-                const sourceFile = program.getSourceFile(document.fileName);
                 const offset = document.offsetAt(position);
-                const checker = program.getTypeChecker();
                 if (!sourceFile) {return null;}
     
                 // Find the node at the clicked position
                 const node = findNodeAtOffset(sourceFile, offset);
                 if (!node) {return null;}
-    
+                
                 const symbol = checker.getSymbolAtLocation(node);
                 if (!symbol) {return null;}
-    
+            
                 const declarations = symbol.getDeclarations();
                 if (!declarations || declarations.length === 0) {
                     return null;
@@ -78,9 +107,7 @@ export function activate(context: vscode.ExtensionContext) {
             },
         }
     );
-    context.subscriptions.push(definitionProvider);
-    const clickListener = vscode.window.onDidChangeTextEditorSelection(clickHandler);
-    context.subscriptions.push(clickListener);
+
 }
 
 function findNodeAtOffset(sourceFile: ts.SourceFile, offset: number): ts.Node | undefined {
@@ -117,7 +144,8 @@ async function createTypeScriptProgram(filePath: string): Promise<ts.Program> {
         module: ts.ModuleKind.CommonJS,
     };
 
-    return ts.createProgram([filePath], options);
+    const program = ts.createProgram([filePath], options);
+    return program;
 }
 
 export function deactivate() {}
